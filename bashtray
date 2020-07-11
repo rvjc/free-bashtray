@@ -1,0 +1,2355 @@
+###############################################################################
+# Bashtray - Bash Script Enhancer - Copyright (C) RVJ Callanan 2007 - rvjc.com
+###############################################################################
+#                                                                     .
+# For more information, please refer to:                           .
+#                                                                .
+#                                                               .
+#      bashtray.manual                                 _______  .  ___
+#      bashtray.license                               (=======\___/===)
+#      bashtray.changelog                              \_____________/
+#
+###############################################################################
+
+if [[ "$BNAME" == "bashtray" ]]; then echo bashtray already sourced; exit 1; fi
+
+###############################################################################
+# CONSTANTS
+###############################################################################
+
+# Bashtray 
+
+readonly BNAME="bashtray"
+readonly BVNUM="1.0.0"
+readonly BDATE="02-Oct-2007"
+readonly BAUTH="RVJ Callanan"
+readonly BCOPY="RVJC.COM"
+readonly BBUGS="bugs@rvjc.com"
+readonly BDESC="common base code used by all scripts"
+
+###############################################################################
+
+# Booleans
+
+readonly OK=0
+
+readonly SUCCESS=0
+readonly FAIL=1
+
+readonly TRUE=0		
+readonly FALSE=1
+
+readonly FLGSET=0
+readonly FLGCLR=1
+
+###############################################################################
+
+# Numeric type constants
+
+readonly B_RNG=256
+readonly W_RNG=65536
+readonly L_RNG=4294967296
+
+readonly B_HEX=2
+readonly B_OCT=3
+readonly B_DEC=3
+
+readonly W_HEX=4
+readonly W_OCT=6
+readonly W_DEC=5
+
+readonly L_HEX=8
+readonly L_OCT=11
+readonly L_DEC=10
+
+readonly NB_RNG=$B_RNG
+readonly NB_MIN=0
+readonly NB_MAX=$((NB_RNG-1))
+readonly NB_HEX=$B_HEX
+readonly NB_OCT=$B_OCT
+readonly NB_DEC=$B_DEC
+
+readonly NW_RNG=$W_RNG
+readonly NW_MIN=0
+readonly NW_MAX=$((NW_RNG-1))
+readonly NW_HEX=$W_HEX
+readonly NW_OCT=$W_OCT
+readonly NW_DEC=$W_DEC
+
+readonly NL_RNG=$L_RNG
+readonly NL_MIN=0
+readonly NL_MAX=$((NL_RNG-1))
+readonly NL_HEX=$L_HEX
+readonly NL_OCT=$L_OCT
+readonly NL_DEC=$L_DEC
+
+readonly IB_RNG=$B_RNG
+readonly IB_MIN=$((-IB_RNG/2))
+readonly IB_MAX=$((IB_RNG/2-1))
+readonly IB_HEX=$B_HEX
+readonly IB_OCT=$B_OCT
+readonly IB_DEC=$B_DEC
+
+readonly IW_RNG=$W_RNG
+readonly IW_MIN=$((-IW_RNG/2))
+readonly IW_MAX=$((IW_RNG/2-1))
+readonly IW_HEX=$W_HEX
+readonly IW_OCT=$W_OCT
+readonly IW_DEC=$W_DEC
+
+readonly IL_RNG=$L_RNG
+readonly IL_MIN=$((-IL_RNG/2))
+readonly IL_MAX=$((IL_RNG/2-1))
+readonly IL_HEX=$L_HEX
+readonly IL_OCT=$L_OCT
+readonly IL_DEC=$L_DEC
+
+###############################################################################
+
+# CHK return codes
+
+readonly CHK_OK=0
+readonly CHK_ERR=1
+readonly CHK_DUP=2
+readonly CHK_NUL=3
+readonly CHK_FMT=4
+readonly CHK_SIZ=5
+readonly CHK_RNG=6
+readonly CHK_PEX=7
+readonly CHK_PNF=8
+readonly CHK_PAE=9
+readonly CHK_PPN=10
+readonly CHK_REX=11
+
+###############################################################################
+
+# Various upper/lower limits
+
+readonly ERR_CON_MIN=7
+readonly ERR_CON_MAX=20
+readonly ERR_MSG_MIN=5
+readonly ERR_MSG_MAX=65
+readonly PRM_NAME_MIN=1
+readonly PRM_NAME_MAX=12
+readonly OPT_NAME_MIN=2
+readonly OPT_NAME_MAX=12
+readonly VAR_NAME_MAX=$((PRM_NAME_MAX+7))
+readonly CMD_NAME_MIN=1
+readonly CMD_NAME_MAX=15
+readonly PATH_NAME_MIN=1
+readonly PATH_NAME_MAX=127
+readonly USER_NAME_MIN=1
+readonly USER_NAME_MAX=15
+
+###############################################################################
+
+# Regular Expressions
+
+# In order to allow regex constants to be embedded in other regex expressions,
+# the following guidelines should be observed:
+
+# 1. Surround each regex constant with parentheses
+# 2. Do not use ^ and $ anchors
+# 3. For exact matches, use the MatchX function
+# 4. For sub-string matches, use the MatchS function
+
+REX_HEX="([0-9a-fA-F]+)"
+REX_OCT="([0-7]*)"
+REX_DEC="([-+]?[0-9]+)"
+REX_PEX="(([-]?[fdhLbcpStNOGsrwxguk])*)"
+
+REX_CMD="([a-zA-Z]+[a-zA-Z0-9]*)"
+REX_PRM="([a-zA-Z]+[a-zA-Z0-9]*)"
+REX_OPT="([a-zA-Z]+[a-zA-Z0-9]*)"
+
+REX_USER="([a-z]+)"
+REX_FDIR="([._-]*([a-zA-Z0-9][._-]?)+([ ]+[a-zA-Z0-9._-]+)*)"
+REX_PATH="(/|/?([.]{1,2}|$REX_FDIR)(/([.]{1,2}|$REX_FDIR))*/?)"
+
+REX_ERRCON="(ERR_[A-Z]+[A-Z0-9_]*[A-Z0-9]+)"
+
+###############################################################################
+
+# Miscellaneous
+
+readonly ERR_BASE=64
+
+###############################################################################
+# FUNCTIONS
+###############################################################################
+
+DCHK()
+{
+	# debug-time assertion
+
+	local cmd src lin
+
+	if (( $SDEBUG )); then
+		return
+	fi
+
+	cmd="if $1; then return; fi"
+	eval "$cmd"
+
+	if [[ "$2" ]]; then lin="$2"; else lin="<unknown>"; fi
+	if [[ "$3" ]]; then src="$3"; else src="$sname"; fi
+
+	errexit $ERR_CHK "Line $lin in $1: $src"
+}
+
+###############################################################################
+ 
+DLOG()
+{
+	# debug-time screen output
+
+	if (( $SDEBUG )); then
+		return
+	fi
+	
+	printf "\nDEBUG LOG: %s\n" "$1"		
+}
+
+###############################################################################
+
+acpy()
+{
+	# copies array referenced by param 1 to array referenced by param 2.
+	# This element-by-element copy method works for sparse arrays
+
+	local len i
+
+	eval len='$'{#$1[*]}
+
+	for (( i=0; i<$len; i++ )); do
+		eval $2[$i]='$'{$1[$i]}
+	done
+}
+
+###############################################################################
+
+aqpy()
+{
+	# as acpy except elements containing whitespace are surrounded by quotes
+
+	local len i e1 e2
+
+	eval len='$'{#$1[*]}
+
+	for (( i=0; i<$len; i++ )); do
+
+		eval e1='$'{$1[$i]}
+
+		if [[ $e1 =~ " " ]]; then
+			e2="\"$e1\""
+		else
+			e2=$e1
+		fi
+
+		eval $2[$i]='$e2'
+	done
+}
+
+###############################################################################
+
+errexit()
+{
+	# Generates error message and exits
+	# if no parameter supplied, assumes internal error
+
+	# $1	error code (optional)
+	# $2	error parameter (optional)
+
+	local errcode errprms
+
+	if (( $# == 0 )); then
+		if (( $? != 0 )); then 
+			errcode=$ERR_ERREXIT_INT
+			errprms=$?
+		else
+			errcode=$ERR_ERREXIT_NULL
+			errprms="" 
+		fi
+	else
+		chknum NB "$1"
+
+		if (( $? )); then
+			errcode=$ERR_ERREXIT_NON
+			errprms="$*"
+		elif (( $1 <= $ERR_BASE )) || (( $1 > $ERR_BASE+$errcount )); then
+			errcode=$ERR_ERREXIT_RNG
+			errprms="$*"
+		else # known error code and valid arguments
+			errcode=$1
+			errprms="${*:2}"
+		fi
+	fi
+
+	errindex=$((errcode-ERR_BASE))
+
+	printf "%s: %s (%d): %s" "$sname" "${errcon[$errindex]}" "$errcode" "${errmsg[$errindex]}" >&2
+
+	if [[ "$errprms" ]]; then
+		printf ": %s" "$errprms" >&2
+	fi
+
+	printf "\n" >&2
+
+	exit $errcode
+}
+
+###############################################################################
+
+regerr()
+{
+	# Registers error constants, codes and messages
+
+	# $1	error constant string
+	# $2	error message string
+
+	if ! (( $SDEBUG )); then
+
+		if (( $regdone == $TRUE )); then
+			errexit $ERR_REGERR_DONE "$*"
+		fi
+
+		if (( $# > 2 )); then
+			errexit $ERR_REGERR_ARG "${*:3}"
+		fi
+
+		if (( ${#1} < $ERR_CON_MIN )) || (( ${#1} > $ERR_CON_MAX )) \
+		|| ! { matchX "$1" "$REX_ERRCON"; }; then
+			errexit $ERR_REGERR_CON "$1"
+		fi
+
+		if (( ${#2} < $ERR_MSG_MIN )) || (( ${#2} > $ERR_MSG_MAX )); then
+			errexit $ERR_REGERR_DSC "$2"
+		fi
+	fi
+
+	let errcount++
+	
+	if ! { assign "$1" "$((ERR_BASE+errcount))"; }; then
+		errexit $ERR_REGERR_VAR "$DUPVAR"
+	fi
+
+	errcon[$errcount]=$1
+	errmsg[$errcount]=$2
+}
+
+###############################################################################
+
+reguse()
+{
+	# Registers script usage information, parses command line, performs
+	# various processing tasks and passes control to client script body
+
+	# $1		<script name>[:<global option flags>]
+	# $2		<script version>
+	# $3		<script date>
+	# $4		<script author>
+	# $5		<script copyright>
+	# $6		<script bug reporting>
+	# $7		<script description>
+	# $8/$9..	<script argument spec>/<description> pairs (optional)
+
+	local cname sopt arg dsc oname oflg pstr pname pdef i
+
+	if (( $regdone == $TRUE )); then errexit $ERR_REGUSE_DONE; fi
+	if (( $# < 7 )); then errexit $ERR_REGUSE_SPEC; fi
+
+	# register global usage information
+
+	i=$(expr index "$1" ":"); let i--
+	
+	if (( i == -1 )); then
+		cname="$1"
+	else
+		cname="${1:0:i}"; let i++
+		sopts="${1:i}"
+		if ! { matchX "$sopts" "[A-Z]+"; }; then errexit $ERR_REGUSE_GLB "$1"; fi
+	fi
+
+	if ! [[ "$cname" == "$sname" ]]; then errexit $ERR_REGUSE_NAME_CFL "$cname"; fi 
+
+	if ! (( $SDEBUG )); then
+
+		if (( ${#cname} < CMD_NAME_MIN )) || (( ${#cname} > CMD_NAME_MAX )) \
+		|| ! { matchX "$cname" "$REX_CMD"; }; then
+			errexit $ERR_REGUSE_NAME "$cname"
+		fi
+	
+		if ! { chkdup "$sopts"; }; then
+			errexit $ERR_REGUSE_GLB_DUP "$CHKBAD"
+		fi
+	fi
+
+	svnum="$2"
+	sdate="$3"
+	sauth="$4"
+	scopy="$5"
+	sbugs="$6"
+	sdesc="$7"
+
+	# register global options
+	
+	for (( i=0; i<${#sopts}; i++ )); do
+		sopt=${sopts:i:1}
+		case $sopt in
+		  R )	soptR=$FLGSET;;
+		  U )	soptU=$FLGSET;;
+		  Y )	soptY=$FLGSET;;
+		  * )	errexit $ERR_REGUSE_GLB_UNK "$sopt";;
+		esac
+	done
+
+	# register argument/description pairs (if any)
+
+	if (( $# > 7 )); then
+		
+		if (( $# % 2 == 0 )) ; then errexit $ERR_REGUSE_ARG_DESC; fi
+
+		for ((i=8; i<$#;)); do
+
+			arg=${!i}; let i++
+			dsc=${!i}; let i++
+
+			if (( ${#arg} == 0 )); then
+				errexit $ERR_REGUSE_ARG '""'
+			fi
+
+			if [[ ${arg:0:1} == "-" ]]; then
+
+				# this is an optional argument
+				# which must come before required arguments
+
+				if (( rqdcount > 0 )); then
+					errexit $ERR_REGUSE_ARG_ORD
+				fi
+
+				case "${arg:1:1}" in
+
+				  [-] )		# long option only with no parameter
+	
+						oname=${arg:2}
+
+						;;
+
+				  [+] )		# long option only with parameter
+
+						pstr=${arg:2}
+						regprm "$pstr" optprm $optcount
+						oname="${optprm[optcount]}"
+
+						;;
+
+				  [a-zA-Z] )	# both short option and long option
+
+						oflg=${arg:1:1}
+
+						case "${arg:2:1}" in
+
+						  "|" )	# no parameter
+
+							oname=${arg:3}
+
+							;;
+
+						  " " )	# has parameter
+		
+							pstr=${arg:3}
+							regprm "$pstr" optprm $optcount
+							oname="${optprm[optcount]}"			
+
+							;;
+
+						  *   )	errexit $ERR_REGUSE_OPT "$arg";;
+
+						esac
+
+						;;
+
+				  * )		errexit $ERR_REGUSE_OPT "$arg";;
+
+				esac
+
+				if ! (( $SDEBUG )); then
+
+					if (( ${#oname} < OPT_NAME_MIN )) \
+					|| (( ${#oname} > OPT_NAME_MAX )); then
+						errexit $ERR_REGUSE_OPT_LEN "$oname"
+					fi
+
+					if ! { matchX "$oname" "$REX_OPT"; }; then
+						errexit $ERR_REGUSE_OPT_NAME "$oname"
+					fi
+
+					if { findopt "$oname"; }; then
+						errexit $ERR_REGUSE_OPT_DUP "--$oname"
+					fi
+
+					if [[ "$oflg" ]] && { findflg "$oflg"; }; then
+						errexit $ERR_REGUSE_OPT_DUP "-$oflg"
+					fi
+				fi
+				
+				opt[$optcount]="$oname"
+				optflg[$optcount]="$oflg"
+				optdsc[$optcount]="$dsc"
+
+				let optcount++
+
+			else
+				# this is a required parameter argument
+
+				rqddsc[$rqdcount]="$dsc"
+
+				pstr=$arg
+				regprm "$pstr" rqdprm $rqdcount
+
+				if ! (( $SDEBUG )); then
+
+					pname="${rqdprm[rqdcount]}"
+					pdef="${rqdprmdef[rqdcount]}"
+
+					if { findopt "$pname"; } || { findrqd "$pname"; }; then
+						errexit $ERR_REGUSE_OPT_DUP "$pname"
+					fi
+
+					if [[ "$pdef" ]]; then
+						errexit $ERR_REGUSE_PRM_DEF "<$pname> default = $pdef"
+					fi
+				fi
+
+				let rqdcount++
+			fi
+		done
+	fi
+
+	parse
+	process
+	body
+}
+
+###############################################################################
+
+regprm()
+{
+	# extracts and validates parameter information for registration
+	
+	# $1 parameter string to process
+	# $2 parameter array prefix (by ref)
+	# $3 paramater array index (by ref)
+
+	local len i o pname ptype pqual prule prex ppex
+	local pmin pminhex pminoct pmax pmaxhex pmaxoct pdef pdefhex pdefoct
+
+	len=${#1}
+
+	DCHK "(( $len ))" $LINENO $BNAME
+
+	# first need to get name, type and qualifier as other processing depends
+	# on these. Note that type qualifier defaults to SS if not supplied
+
+	i=$(expr index "$1" ":"); let i--
+
+	if (( i > -1 )); then
+
+		if (( i > len-3 )); then errexit $ERR_REGUSE_PRM "$1"; fi
+
+		pname=${1:0:i}; let i++	
+		ptype=${1:i:1}; let i++
+		pqual=${1:i:1}; let i++
+
+	else
+		i=$(expr index "$1" "<<")
+		if (( i == 0 )); then i=$(expr index "$1" "="); fi
+		let i--
+
+		if (( i > -1 )); then
+			pname=${1:0:i}
+		else
+			pname="$1"
+			let i=len
+		fi
+
+		ptype="S"
+		pqual="S"
+	fi
+
+	if [[ "${1:i:2}" == "<<" ]]; then
+		let i+=2
+		let o=$(expr index "${1:i}" ">>")
+		if (( o==0 )); then errexit $ERR_REGUSE_PRM_RULE "<$pname>: ${1:i}"; fi
+		prule=${1:i:o-1}
+		if ! [ "$prule" ]; then errexit $ERR_REGUSE_PRM_RULE "<$pname>: $rule"; fi
+		let i+=o+1
+	fi
+
+	if [[ "${1:i:1}" == "=" ]]; then			
+
+		let i++
+		pdef=${1:i}
+
+		if ! [ "$pdef" ]; then
+			errexit $ERR_REGUSE_PRM_NUL "<$pname> default"
+		fi
+
+		let i=len
+	fi
+
+	if (( i < len )); then errexit $ERR_REGUSE_PRM "$1"; fi
+
+	if ! (( $SDEBUG )); then
+
+		if ! { matchX "$pname" "$REX_PRM"; }; then
+			errexit $ERR_REGUSE_PRM_NAME "$pname"
+		fi
+	
+		if (( ${#pname} < $PRM_NAME_MIN )) \
+		|| (( ${#pname} > $PRM_NAME_MAX )); then
+			errexit $ERR_REGUSE_PRM_LEN "$pname"
+		fi
+	fi
+
+	# do type/qualifier dependent processing and validation
+
+	case $ptype in
+
+	[NI]	)	if ! [[ "$pqual" =~ "[BWL]" ]]; then
+				errexit $ERR_REGUSE_PRM_QUAL "$pname:$ptype($pqual?)"
+			fi
+
+			if [[ "$prule" ]]; then
+
+				let i=$(expr index "$prule" ",")
+			
+				if (( i == 0 )); then
+					pmax="$prule"
+				else
+					pmin="${prule:0:i-1}"
+					pmax="${prule:i}"
+				fi
+
+				if ! [ "$pmin" ] && ! [ "$pmax" ]; then
+					errexit $ERR_PRM_RULE "<$pname>: $rule"
+				fi
+			fi
+				
+			if ! [ "$pmin" ]; then
+				eval pmin='$'$ptype$pqual"_MIN"
+			fi
+
+			chknum $ptype$pqual "$pmin"
+
+			case $? in
+			  $CHK_NUL ) errexit $ERR_REGUSE_PRM_NUL "<$pname> min = \"\"";;
+			  $CHK_FMT ) errexit $ERR_REGUSE_PRM_FMT "<$pname> min = $pmin";;
+			  $CHK_SIZ ) errexit $ERR_REGUSE_PRM_SIZ "<$pname> min = $pmin";;
+			  $CHK_RNG ) errexit $ERR_REGUSE_PRM_RNG "<$pname> min = $pmin";;
+			  *        ) DCHK "(( $? == $CHK_OK ))" $LINENO $BNAME;;
+			esac
+
+			pmin="$CHKVAL"
+			pminhex="$CHKHEX"
+			pminoct="$CHKOCT"
+
+			if ! [ "$pmax" ]; then
+				eval pmax='$'$ptype$pqual"_MAX"
+			fi
+
+			chknum $ptype$pqual "$pmax"
+
+			case $? in
+			  $CHK_NUL ) errexit $ERR_REGUSE_PRM_NUL "<$pname> max = \"\"";;
+			  $CHK_FMT ) errexit $ERR_REGUSE_PRM_FMT "<$pname> max = $pmax";;
+			  $CHK_SIZ ) errexit $ERR_REGUSE_PRM_SIZ "<$pname> max = $pmax";;
+			  $CHK_RNG ) errexit $ERR_REGUSE_PRM_RNG "<$pname> max = $pmax";;
+			  *        ) DCHK "(( $? == $CHK_OK ))" $LINENO $BNAME;;
+			esac
+
+			pmax="$CHKVAL"
+			pmaxhex="$CHKHEX"
+			pmaxoct="$CHKOCT"
+			
+			if (( $pmax < $pmin )); then errexit $ERR_REGUSE_PRM_CFL "<$pname> min ($pmin) > max ($pmax)"; fi
+
+			if [[ "$pdef" ]]; then
+
+				chknum $ptype$pqual "$pdef" "$pmin" "$pmax"
+
+				case $? in
+				  $CHK_NUL ) errexit $ERR_REGUSE_PRM_NUL "<$pname> default = \"\"";;
+				  $CHK_FMT ) errexit $ERR_REGUSE_PRM_FMT "<$pname> default = $pdef";;
+				  $CHK_SIZ ) errexit $ERR_REGUSE_PRM_SIZ "<$pname> default = $pdef";;
+				  $CHK_RNG ) errexit $ERR_REGUSE_PRM_RNG "<$pname> default = $pdef";;
+			 	  *        ) DCHK "(( $? == $CHK_OK ))" $LINENO $BNAME;;
+
+				esac
+
+				pdef="$CHKVAL"
+				pdefhex="$CHKHEX"
+				pdefoct="$CHKOCT"
+			fi
+
+			;;
+
+	[P]	)	if ! [[ $pqual =~ "[EN]" ]]; then
+				errexit $ERR_REGUSE_PRM_QUAL "$pname:$ptype($pqual?)"
+			fi
+
+			ppex="$prule"
+			
+			if ! { matchX "$ppex" "$REX_PEX"; }; then
+				errexit $ERR_REGUSE_PRM_PEX "<$pname> pex = $ppex"
+			fi
+	
+			if [[ "$pdef" ]]; then
+
+				# we just need to do basic format checking here as default path
+				# may not be used in which case we do not want to generate
+				# an error e.g. if default file is missing
+
+				chkpath "$pdef"
+
+				case $? in
+				  $CHK_NUL ) errexit $ERR_REGUSE_PRM_NUL "<$pname> default = \"\"";;
+				  $CHK_FMT ) errexit $ERR_REGUSE_PRM_FMT "<$pname> default = $pdef";;
+				  $CHK_SIZ ) errexit $ERR_REGUSE_PRM_SIZ "<$pname> default = $pdef";;
+			 	  *        ) DCHK "(( $? == $CHK_OK ))" $LINENO $BNAME;;
+				esac
+			fi
+
+			;;
+
+	[S]	)	if ! [[ $pqual =~ "[S]" ]]; then
+				errexit $ERR_REGUSE_PRM_QUAL "$pname:$ptype($pqual?)"
+			fi
+			
+			prex="$prule" 
+			
+			# validation of regex is not possible which is dangerous
+			# because a bad regex could hang script but this is always
+			# going to be a problem with regexes
+
+			if [[ "$pdef" ]]; then
+
+				chkrex "$pdef" "$prex"
+
+				case $? in
+				  $CHK_NUL ) errexit $ERR_REGUSE_PRM_NUL "<$pname> default = \"\"";;
+				  $CHK_FMT ) errexit $ERR_REGUSE_PRM_FMT "<$pname> default = $pdef";;
+				  $CHK_SIZ ) errexit $ERR_REGUSE_PRM_SIZ "<$pname> default = $pdef";;
+			 	  *        ) DCHK "(( $? == $CHK_OK ))" $LINENO $BNAME;;
+				esac
+			fi
+
+			;;
+
+	*   	)	errexit $ERR_REGUSE_PRM_TYPE "$ptype"
+			;;
+	esac
+
+	# now update parameter array with extracted and validated usage info
+	
+	eval $2[$3]="\"$pname\""
+	eval $2type[$3]="\"$ptype\""
+	eval $2qual[$3]="\"$pqual\""
+	eval $2min[$3]="\"$pmin\""
+	eval $2minhex[$3]="\"$pminhex\""
+	eval $2minoct[$3]="\"$pminoct\""
+	eval $2max[$3]="\"$pmax\""
+	eval $2maxhex[$3]="\"$pmaxhex\""
+	eval $2maxoct[$3]="\"$pmaxoct\""
+	eval $2rex[$3]="\"$prex\""
+	eval $2pex[$3]="\"$ppex\""
+	eval $2def[$3]="\"$pdef\""
+	eval $2defhex[$3]="\"$pdefhex\""
+	eval $2defoct[$3]="\"$pdefoct\""
+}
+
+###############################################################################
+
+parse()
+{
+	# Parses command line based on registered usage specification.
+
+	local arg len oname oflg pname actrqdcount a f
+
+	let a=0
+	let actrqdcount=0
+
+	while (( a < spnum )); do
+
+		arg="${sprms[a]}"
+		let len=${#arg}
+
+		if [[ "${arg:0:1}" == "-" ]]; then
+
+			# this is an optional argument
+
+			if (( actrqdcount > 0 )); then errexit $ERR_ARG_ORD "$arg"; fi
+
+			if [[ "${arg:1:1}" == "-" ]]; then
+
+				# single long option
+
+				if (( len < OPT_NAME_MIN+2 )); then errexit $ERR_ARG_OPT "$arg"; fi
+	
+				oname=${arg:2}
+
+				if { findopt "$oname"; }; then
+
+					# registered long option
+
+					optval[INDEX]=$FLGSET
+					pname="${optprm[INDEX]}"
+
+					if [[ "$pname" ]] && (( a == spnum-1 )); then
+						errexit $ERR_ARG_OPT_NOPRM "-$oname <$pname>"
+					fi
+
+				else
+					# builtin or unknown long option
+
+					parsebuiltin $oname
+					pname=""
+				fi
+
+			else
+
+				# one or more short option flags
+
+				if (( len <= 1 )); then errexit $ERR_ARG_OPT "$arg"; fi
+
+				for (( f=1; f<len; f++ )); do
+
+					oflg="${arg:f:1}"
+
+					if { findflg $oflg; }; then
+
+						# registered short option
+
+						optval[INDEX]=$FLGSET
+						pname="${optprm[INDEX]}"
+
+						if [[ "$pname" ]] && (( f != len-1 )); then
+							errexit $ERR_ARG_OPT_NOPRM "-$oflg <$pname>"
+						fi
+
+					else
+						# builtin or unknown short option
+
+						parsebuiltin $oflg
+						pname=""
+					fi
+				done
+
+			fi
+
+			if [[ "$pname" ]]; then
+
+				# next argument is the option's parameter
+
+				DCHK "(( $INDEX > 0 ))" $LINENO $BNAME
+
+				let a++
+				optprmraw[INDEX]="${sprms[a]}"
+			fi
+
+		else
+		
+			# this is a required argument
+
+			if (( actrqdcount == rqdcount )); then errexit $ERR_ARG_EXCESS "$arg"; fi
+	
+			rqdprmraw[actrqdcount]="$arg"
+			let actrqdcount++
+		fi			
+
+		let a++
+	done
+
+	if (( $actrqdcount < $rqdcount )); then
+		errexit $ERR_ARG_MISSING "<${rqdprm[actrqdcount]}>"
+	fi
+}
+
+
+###############################################################################
+
+parsebuiltin()
+{
+	# Parses a long or short built-in option argument and passes control to
+	# the appropriate function. If not recognised, generates an unknown
+	# option error. In the case of a standalone option, checks for
+	# superfluous arguments including a single argument with multiple flags
+
+	local oraw oname pfx
+
+	if (( ${#1} > 1 )); then
+
+		olong=$TRUE
+		oraw="--$1"
+		oname=$1
+
+	else
+		olong=$FALSE
+		oraw="-$1"
+
+		case "$1" in
+		  V ) oname=version;;
+		  h ) oname=help;;
+		  e ) oname=exitcodes;;
+		  q ) oname=quiet;;
+		  v ) oname=verbose;;
+		  * ) errexit $ERR_ARG_OPT_UKS "$oraw";;
+		esac
+	fi
+
+	# distinguish builtins by prefix
+
+	case "$oname" in
+	  quiet|verbose 	 )	pfx=set;;
+	  version|help|exitcodes ) 	pfx=show;;
+	  * 			 )	errexit $ERR_ARG_OPT_UKL "$oraw";;
+	esac
+
+	# detect superfluous arguments in the case of standalone options
+
+	if [[ $pfx == "show" ]]; then
+	
+		if (( $spnum > 1 )); then
+			errexit $ERR_ARG_OPT_MULTI "$oraw"
+		fi
+
+		DCHK "(( $spnum == 1 ))" $LINENO $BNAME
+
+		# detect multiple short option flags in single argument
+	
+		if (( $olong == $FALSE )); then
+			if (( ${#sprms[0]} > 2)); then
+				errexit $ERR_ARG_OPT_MULTI "$oraw"
+			fi
+		fi
+	fi
+
+	# Now pass control to appropriate built-in function
+	# Standalones will exit, others will pass back control
+
+	eval "$pfx$oname"
+}
+
+###############################################################################
+
+process()
+{	
+	# With usage information registered and the command line parsed, this
+	# function performs validation and other post-parse tasks.
+
+	preprocess
+
+	processopts
+	processrqds
+
+	postprocess
+
+	lockvars
+	unsetvars
+}
+
+###############################################################################
+
+preprocess()
+{	
+	# Processes any global items that need to be processed early
+
+	if (( $soptR == $FLGSET )); then
+		if (( $EUID != 0 )); then errexit $ERR_NOTROOT; fi
+	fi
+
+	if (( $soptU == $FLGSET )); then
+		if (( $EUID == 0 )); then errexit $ERR_DNYROOT; fi
+	fi
+}
+
+###############################################################################
+
+postprocess()
+{	
+	# Processes any global items that need to be processed late
+
+	if (( $soptY == $FLGSET )); then
+		showconfirm
+	fi
+}
+
+###############################################################################
+
+processopts()
+{	
+	# Processes each optional argument in turn
+
+	local i
+
+	for ((i=0; i<optcount; i++ )); do
+		processopt opt $i
+	done
+}
+
+###############################################################################
+
+processrqds()
+{	
+	# Processes each required argumenyt in turn
+
+	local i
+
+	for ((i=0; i<rqdcount; i++ )); do
+		processrqd rqd $i
+	done
+}
+
+###############################################################################
+
+processopt()
+{
+	# Processes optional argument. If the option is not set (not parsed),
+	# its value must be initialised (cleared) and a default value assigned
+	# to the option parameter (where applicable). The derived option
+	# variables must also be assigned. Further processing of the option
+	# parameter is delegated to processprm (where applicable). Note that
+	# the parameter of an unsupplied option with no default will not
+	# invite any processing.
+	
+	# $1 = optional argument array prefix (by ref)
+	# $2 = optional argument array index
+
+	eval "local oname=\""'$'"{$1[$2]}\""
+	eval "local oflg=\""'$'"{$1flg[$2]}\""
+	eval "local oval=\""'$'"{$1val[$2]}\""
+	eval "local odsc=\""'$'"{$1dsc[$2]}\""
+	eval "local pname=\""'$'"{$1prm[$2]}\""
+	eval "local praw=\""'$'"{$1prmraw[$2]}\""
+	eval "local pdef=\""'$'"{$1prmdef[$2]}\""
+
+	if ! [ "$oval" ]; then
+		oval=$FLGCLR
+		eval "$1""val[$2]=$oval"
+	fi
+
+	if ! { assign "$oname""_opt" "$oval"; } \
+	|| ! { assign "$oname""_flg" "$oflg"; } \
+	|| ! { assign "$oname""_dsc" "$odsc"; }; then
+		errexit $ERR_REGUSE_OPT_VAR "$oname : $DUPVAR"
+	fi
+
+	if [[ "$pname" ]]; then
+		
+		if (( oval == $FLGSET )) || [ "$pdef" ]; then
+
+			if (( oval == $FLGCLR )); then
+				DCHK "(( ${#praw}==0 ))" $LINENO $BNAME
+				praw="$pdef"
+				eval "$1prmraw[$2]=\"$praw\""
+			fi
+
+			processprm $1prm $2
+
+		fi
+	fi
+}
+
+###############################################################################
+
+processrqd()
+{
+	# Processes required argument. Simply assigns derived description
+	# variable and delegates to processprm
+	
+	# $1 = required argument array prefix (by ref)
+	# $2 = required argument array index
+
+	eval "local rname=\""'$'"{$1prm[$2]}\""
+	eval "local rdsc=\""'$'"{$1dsc[$2]}\""
+
+	if ! { assign "$rname""_dsc" "$rdsc"; }; then
+		errexit $ERR_REGUSE_OPT_VAR "$oflg : $DUPVAR"
+	fi
+	
+	processprm $1prm $2
+}
+
+###############################################################################
+
+processprm()
+{
+	# Processes parameter. Validates raw parameter value using registered
+	# usage information. If validation is successful, normalised and
+	# alternative parameter value representations are generated and values
+	# are assigned to all derived variables.
+
+	# $1 = parameter array prefix (by ref)
+	# $2 = parameter array index
+
+	local pval phex poct
+
+	eval "local pname=\""'$'"{$1[$2]}\""
+	eval "local praw=\""'$'"{$1raw[$2]}\""
+	eval "local ptype=\""'$'"{$1type[$2]}\""
+	eval "local pqual=\""'$'"{$1qual[$2]}\""
+	eval "local pmin=\""'$'"{$1min[$2]}\""
+	eval "local pminhex=\""'$'"{$1minhex[$2]}\""
+	eval "local pminoct=\""'$'"{$1minoct[$2]}\""
+	eval "local pmax=\""'$'"{$1max[$2]}\""
+	eval "local pmaxhex=\""'$'"{$1maxhex[$2]}\""
+	eval "local pmaxoct=\""'$'"{$1maxoct[$2]}\""
+	eval "local ppex=\""'$'"{$1pex[$2]}\""
+	eval "local prex=\""'$'"{$1rex[$2]}\""
+	eval "local pdef=\""'$'"{$1def[$2]}\""
+	eval "local pdefhex=\""'$'"{$1defhex[$2]}\""
+	eval "local pdefoct=\""'$'"{$1defoct[$2]}\""
+
+	DCHK "(( ${#pname} ))" $LINENO $BNAME
+
+
+	case $ptype in
+
+	[NI] )	DCHK "(( ${#pmin} ))" $LINENO $BNAME
+		DCHK "(( ${#pmax} ))" $LINENO $BNAME
+
+		eval chknum $ptype$pqual "$praw" "$pmin" "$pmax"
+
+		case $? in
+		  $CHK_NUL ) errexit $ERR_PRM_NUL "<$pname>: \"\"";;
+		  $CHK_FMT ) errexit $ERR_PRM_FMT "<$pname>: $praw";;
+		  $CHK_SIZ ) errexit $ERR_PRM_SIZ "<$pname>: $praw";;
+		  $CHK_RNG ) errexit $ERR_PRM_RNG "<$pname>: $praw";;
+		  *	   ) DCHK "(( $? == $CHK_OK ))" $LINENO $BNAME;;
+		esac
+
+		pval="$CHKVAL"
+		phex=$CHKHEX
+		poct=$CHKOCT
+		eval "$1""val[$2]=\"$pval\""
+		eval "$1""hex[$2]=\"$phex\""
+		eval "$1""oct[$2]=\"$phex\""
+
+		;;
+
+	[P] )	eval "chkP$pqual \"$praw\" \"$ppex\""
+
+		case $? in
+		  $CHK_NUL ) errexit $ERR_PRM_NUL "<$pname>: \"\"";;
+		  $CHK_FMT ) errexit $ERR_PRM_FMT "<$pname>: $praw";;
+		  $CHK_SIZ ) errexit $ERR_PRM_SIZ "<$pname>: $praw";;
+		  $CHK_PEX ) errexit $ERR_PRM_PEX "<$pname>: $praw";;
+		  $CHK_PNF ) errexit $ERR_PRM_PNF "<$pname>: $praw";;
+		  $CHK_PAE ) errexit $ERR_PRM_PAE "<$pname>: $praw";;
+		  $CHK_PPN ) errexit $ERR_PRM_PPN "<$pname>: $praw";;
+		  *	     ) DCHK "(( $? == $CHK_OK ))" $LINENO $BNAME;;
+		esac
+
+		pval="$CHKVAL"
+		eval "$1""val[$2]=\"$pval\""
+	
+		;;
+
+	[S] )	chkrex "$praw" "$prex"
+
+		case $? in
+		  $CHK_REX ) errexit $ERR_PRM_REX "<$pname>: $praw";;
+		  *	     ) DCHK "(( $? == $CHK_OK ))" $LINENO $BNAME;;
+		esac
+
+		pval="$CHKVAL"
+		eval "$1""val[$2]=\"$pval\""
+
+		;;
+	esac
+
+
+	# Note that since underscores are not allowed in parameter names, the
+	# duplicate name check on registration is sufficient to ensure that
+	# there are no clashes between parameter-derived variables.
+	# Nevertheless clashes with client script variables are always a hazard
+	# so the assign function will check for clashes (in debug mode only)
+
+	if ! { assign "$pname"		"$pval"; 	} \
+	|| ! { assign "$pname""_raw"	"$praw";	} \
+	|| ! { assign "$pname""_hex"	"$phex";	} \
+	|| ! { assign "$pname""_oct"	"$poct"; 	} \
+	|| ! { assign "$pname""_type"	"$ptype"; 	} \
+	|| ! { assign "$pname""_qual"	"$pqual"; 	} \
+	|| ! { assign "$pname""_min"	"$pmin"; 	} \
+	|| ! { assign "$pname""_minhex"	"$pminhex"; 	} \
+	|| ! { assign "$pname""_minoct"	"$pminoct"; 	} \
+	|| ! { assign "$pname""_max"	"$pmax"; 	} \
+	|| ! { assign "$pname""_maxhex"	"$pmaxhex"; 	} \
+	|| ! { assign "$pname""_maxoct"	"$pmaxoct"; 	} \
+	|| ! { assign "$pname""_pex"	"$ppex"; 	} \
+	|| ! { assign "$pname""_rex"	"$prex"; 	} \
+	|| ! { assign "$pname""_def"	"$pdef"; 	} \
+	|| ! { assign "$pname""_defhex"	"$pdefhex"; 	} \
+	|| ! { assign "$pname""_defoct"	"$pdefoct"; 	}; then
+
+		errexit $ERR_REGUSE_PRM_VAR "$pname : $DUPVAR"
+	fi
+}
+
+###############################################################################
+
+lockvars()
+{
+	# locks all variables whose values are finalised 
+
+	# global option flags
+
+	readonly soptR
+	readonly soptU
+	readonly soptY
+
+	# built-in option flags
+
+	readonly sb_quiet
+	readonly sb_verbose
+
+	# error counter and arrays
+
+	readonly errcount
+	readonly errcon errmsg
+
+	# argument counters and arrays
+	
+	readonly optcount opt optflg optdsc optval
+	readonly optprm optprmval optprmraw optprmhex optprmoct optprmtype optprmqual
+	readonly optprmmin optprmminhex optprmminoct optprmmax optprmmaxhex optprmmaxoct
+	readonly optprmpex optprmrex optprmdef optprmdefhex optprmdefoct
+
+	readonly rqdcount rqddsc
+	readonly rqdprm rqdprmval rqdprmraw rqdprmhex rqdprmoct rqdprmtype rqdprmqual
+	readonly rqdprmmin rqdprmminhex rqdprmminoct rqdprmmax rqdprmmaxhex rqdprmmaxoct
+	readonly rqdprmpex rqdprmrex rqdprmdef rqdprmdefhex rqdprmdefoct
+
+	# misc global variables
+
+	readonly regdone=$TRUE
+}
+###############################################################################
+
+unsetvars()
+{
+	# unsets variables which are not required anymore thus freeing memory
+
+	unset dummy
+}
+
+###############################################################################
+
+body()
+{
+	# passes control to client script main function, outputting start and
+	# completion messages if verbose option is enabled
+
+	if (( sb_verbose == TRUE )); then
+		printf "%s started\n" $sname
+	fi
+
+	main
+
+	if (( sb_verbose == TRUE )); then
+		printf "%s completed\n" $sname
+	fi
+}
+
+###############################################################################
+
+findopt()
+{
+	# returns index of optional argument in INDEX or -1 if not found
+	# $1 = optional argument name
+
+	local i
+
+	INDEX=-1
+
+	for (( i=0; i<optcount; i++ )); do
+		if [[ "$1" == "${opt[i]}" ]]; then
+			INDEX=$i
+			return $TRUE
+		fi
+	done
+
+	return $FALSE
+}
+
+###############################################################################
+
+findflg()
+{
+	# returns index of optional flag in INDEX or -1 if not found
+	# $1 = flag letter
+
+	local i
+
+	INDEX=-1
+
+	for (( i=0; i<optcount; i++ )); do
+		if [[ "$1" == "${optflg[i]}" ]]; then
+			INDEX=$i
+			return $TRUE
+		fi
+	done
+
+	return $FALSE
+}
+
+###############################################################################
+
+findrqd()
+{
+	# returns index of required argument in INDEX or -1 if not found
+	# $1 = required argument name
+
+	local i
+
+	INDEX=-1
+
+	for (( i=0; i<rqdcount; i++ )); do
+		if [[ "$1" == "${rqd[i]}" ]]; then
+			INDEX=$i
+			return $TRUE
+		fi
+	done
+
+	return $FALSE
+}
+
+###############################################################################
+
+assign()
+{
+	# Assigns value to new global read-only variable. Returns TRUE if
+	# successful. Returns FALSE if variable name is already in use.
+	# The duplicate variable is returned in $DUPVAR to assist list
+	# constructs. The duplicate check is potentially time-consuming
+	# and is therefore only performed in debug mode.
+	
+	local avar aval lst var
+
+	avar="$1"
+	aval="$2"
+
+	DUPVAR=""
+	
+	DCHK "(( ${#avar} ))" $LINENO $BNAME
+
+	if ! (( $SDEBUG )); then
+
+		# there must be a more efficient way of doing this!
+
+		eval "lst="'$'"{!$avar""*}"
+
+		for var in $lst; do
+			if [[ "$var" == "$avar" ]]; then
+				DUPVAR="$var"
+				return $FALSE
+			fi
+		done
+	fi
+
+	eval "readonly $avar""=\"$aval\""
+	return $TRUE
+}
+
+###############################################################################
+
+confirm()
+{
+	# Issues a prompt to user to continue or abort
+	#
+	# $1 = optional prompt overide (default = Proceed?)
+	# $2 = optional continue command overide (default = y)
+	# $3 = optional abort command overide (default = n)
+
+	local prompt dorex norex dotxt notxt reply
+
+	if [[ "$1" ]]; then
+		prompt="$1"
+	else
+		prompt="Proceed?"
+	fi
+
+	if [[ "$2" ]]; then
+		dorex="$(echo $2 | tr [A-Z] [a-z])"
+		dotxt="$2"
+	else
+		dorex="y"
+		dotxt="Y"
+	fi
+
+	if [[ "$3" ]]; then
+		norex="$(echo $3 | tr [A-Z] [a-z])"
+		notxt="$3"
+	else
+		norex="n"
+		notxt="N"
+	fi
+
+	reply=""
+
+	while ! { matchX "$reply" "$dorex"; }; do
+		printf "$prompt (%s/%s): " "$dotxt" "$notxt"; read
+		reply=$(echo $REPLY | tr [A-Z] [a-z])
+		if { matchX "$reply" "$norex"; }; then errexit $ERR_USR_EXIT; fi
+	done
+}
+
+###############################################################################
+
+setquiet()
+{
+	sb_quiet=$TRUE	
+}
+
+###############################################################################
+
+setverbose()
+{
+	sb_verbose=$TRUE	
+}
+
+###############################################################################
+
+showconfirm()
+{	
+	# Reminds user what is about to take place, recaps pertinent parameters
+	# and prompts for confirmation to proceed. Pertinent parameters include
+	# all required parameters, all enabled optional parameters but also any
+	# disabled optional parameters with defaults.
+
+	local i
+
+	printf "About to %s" "$sdesc"
+
+	if (( optcount > 0 || rqdcount > 0 )); then
+		printf " using the following settings:"
+	fi
+
+	printf "\n"
+
+	for (( i=0; i<optcount; i++ )); do
+
+		if (( ${optval[i]} == $TRUE )) || [[ "${optprmval[i]}" ]]; then	
+
+			if [[ "${optprmval[i]}" ]]; then
+
+				printf "  %-40s: " "default ${optdsc[i]}"
+				printf "%s" "${optprmval[i]}"
+
+			else
+				printf "  %-40s: " "     -${opt[i]} ${optdsc[i]}"
+				printf "%s" "ENABLED"
+			fi
+
+			printf "\n"
+		fi
+	done
+
+	for (( i=0; i<rqdcount; i++ )); do
+		printf "  %-40s: %s\n" "        ${rqddsc[i]}" "${rqdprmval[i]}"
+	done
+
+	confirm 
+}
+
+###############################################################################
+
+showversion()
+{
+	# Displays version information and exits
+	
+	printf "\n%-15s %-10s %s\n" "$sname" "$svnum" "$sdate"	
+	printf "%-15s %-10s %s\n\n" "$BNAME" "$BVNUM" "$BDATE"
+	exit 0
+}
+
+###############################################################################
+
+showhelp()
+{
+	# Displays help information and exits
+
+	local i o f
+	
+	printf "\n"
+	
+	printf "COMMAND\n\t%s - %s\n\n" $sname "$sdesc"
+	
+	printf "USAGE\n\t%s" "$sname [options]"
+	
+	if (( $rqdcount > 0 )); then
+		printf " ["
+		for ((i=0; i<rqdcount; i++)); do
+			printf " <${rqdprm[i]}>"
+		done
+		printf " ]"
+	fi
+	
+	printf "\n\n"
+
+	if (( rqdcount > 0 )); then
+	
+		printf "REQUIRED\n"
+
+		for (( i=0; i<rqdcount; i++ )); do
+			showrqd "${rqdprm[i]}" "${rqddsc[i]}"
+		done
+	fi
+	
+	printf "OPTIONS\n"
+
+	for (( i=0; i<optcount; i++ )); do
+
+		showopt "${optflg[i]}"		\
+			"${opt[i]}"		\
+			"${optprm[i]}"		\
+			"${optprmdef[i]}" 	\
+			"${optdsc[i]}"
+	done
+
+	showbuiltin "q" "quiet"		"suppress all output except errors"
+	showbuiltin "v" "verbose"	"show detailed output"
+	showbuiltin "h" "help"		"display help information"
+	showbuiltin "V" "version"	"display version information"
+	showbuiltin "e" "exitcodes"	"display exit codes"
+
+	printf "AUTHOR\n\tWritten by %s.\n\n" "$sauth"
+	
+	printf "BUGS\n\tReport bugs to <%s>.\n\n" "$sbugs"
+	
+	printf "COPYRIGHT\n\tCopyright %s %s.\n" ${sdate:7} "$scopy"
+	printf "\tThis is free software. You may redistribute copies under\n"
+	printf "\tthe terms of the GNU General Public License Version 3.\n"
+	printf "\tThere is no warranty to the extent permitted by law.\n\n"
+	
+	printf "%s\t\t%s\t\t%s\n\n" $sname $svnum $sdate
+	
+	exit 0
+}
+
+###############################################################################
+
+showrqd()
+{
+	# Outputs help entry for required argument
+
+	# $1 = parameter name
+	# $2 = description
+
+	local w
+
+	let w=$PRM_NAME_MAX+16
+
+	printf "\t%-$w""s%s\n\n" $1 "$2"
+}
+
+###############################################################################
+
+showopt()
+{
+	# Outputs help entry for optional argument
+
+	# $1 = short option
+	# $2 = long option
+	# $3 = parameter name
+	# $4 = default
+	# $5 = description
+
+	local w aspc adsc adef
+
+	let w=$PRM_NAME_MAX+16
+		
+	if [[ "$1" ]]; then
+		aspc="-$1, "
+	fi
+
+	aspc="$aspc--$2"
+
+	if [[ "$3" ]]; then
+		aspc="$aspc <value>"
+	fi
+
+	adef="$4"
+	adsc="$5"
+
+	if [[ "$adef" ]]; then
+		adsc="$adsc override"
+	fi
+
+	printf "\t%-$w""s%s\n" "$aspc" "$adsc"
+
+	if [[ "$adef" ]]; then
+		printf "\t%-$w""s%s\n" " " "default = $adef"
+	fi
+
+	printf "\n"
+}
+
+###############################################################################
+
+showbuiltin()
+{
+	# displays help information for builtin option if not over-ridden
+	# by registered optional arguments
+
+	# $1 = short option
+	# $2 = long option
+	# $3 = description
+
+	local f o
+
+	if { findflg "$1"; }; then
+		f=${optflg[INDEX]}
+	fi	
+
+	if { findopt "$2"; }; then
+		o=${opt[INDEX]}
+	fi	
+
+	if [[ "$f" ]] || [[ "$o" ]]; then
+		showopt "$f" "$o" "" "" "$3"
+	fi
+}
+
+###############################################################################
+
+showexitcodes()
+{
+	# Displays registered exit codes and exits. Output as script constant
+	# declarations to facilitate copy/paste into caller script
+
+	local i w
+
+	let w=$ERR_CON_MAX+10
+
+	printf "\n# Exit codes used by "$sname"\n\n"
+
+	for (( i=1; i<=errcount; i++ )); do
+		printf "%-$w""s# %s\n" "${errcon[$i]}"="$(($ERR_BASE+$i))" "${errmsg[$i]}"
+	done
+
+	printf "\n"
+
+	exit 0
+}
+
+###############################################################################
+
+showargs()
+{
+	# Lists argument details based on registered usage information and
+	# the parsed command-line. This is essentially an exhaustive dump
+	# of optional and required argument arrays. Useful for debugging
+
+	local i
+
+	if (( $SDEBUG )); then
+		errexit $ERR_DBG_ONLY
+	fi
+
+	printf "\n"
+
+	if (( $rqdcount > 0 )); then
+
+		printf "%s\n" "REQUIRED ARGUMENTS"
+		printf "%s\n" "------------------"
+
+		for (( i=0; i<rqdcount; i++ )); do
+
+			printf "%-20s%s\n" "Parameter:" "${rqdprm[i]}"
+			printf "%-20s%s\n" "Description:" "${rqddsc[i]}"
+			printf "%-20s%s\n" "Value:" "${rqdprmval[i]}"
+			printf "%-20s%s\n" "Value (Raw):" "${rqdprmraw[i]}"
+			printf "%-20s%s\n" "Value (Hex):" "${rqdprmhex[i]}"
+			printf "%-20s%s\n" "Value (Oct):" "${rqdprmoct[i]}"
+			printf "%-20s%s\n" "Type/Qualifier:" "${rqdprmtype[i]}${rqdprmqual[i]}"
+			printf "%-20s%s\n" "Min:" "${rqdprmmin[i]}"
+			printf "%-20s%s\n" "Min (Hex):" "${rqdprmminhex[i]}"
+			printf "%-20s%s\n" "Min (Oct):" "${rqdprmminoct[i]}"
+			printf "%-20s%s\n" "Max:" "${rqdprmmax[i]}"
+			printf "%-20s%s\n" "Max (Hex):" "${rqdprmmaxhex[i]}"
+			printf "%-20s%s\n" "Max (Oct):" "${rqdprmmaxoct[i]}"
+			printf "%-20s%s\n" "Pex:" "${rqdprmpex[i]}"
+			printf "%-20s%s\n" "Rex:" "${rqdprmpex[i]}"
+
+			printf "\n"
+		done
+	fi
+
+	if (( $optcount > 0 )); then
+
+		printf "%s\n" "OPTIONAL ARGUMENTS"
+		printf "%s\n" "------------------"
+
+		for (( i=0; i<optcount; i++ )); do
+
+			printf "%-20s%s\n" "Long Option:" "--${opt[i]}"
+			printf "%-20s%s\n" "Short Option:" "-${optflg[i]}"
+			printf "%-20s%s\n" "Description:" "${optdsc[i]}"
+			printf "%-20s%s\n" "State (0=true):" "${optval[i]}"
+
+			if [[ "${optprm[i]}" ]]; then
+
+				printf "%-20s%s\n" "Parameter:" "${optprm[i]}"
+				printf "%-20s%s\n" "Value:" "${optprmval[i]}"
+				printf "%-20s%s\n" "Value (Raw):" "${optprmraw[i]}"
+				printf "%-20s%s\n" "Value (Hex):" "${optprmhex[i]}"
+				printf "%-20s%s\n" "Value (Oct):" "${optprmoct[i]}"
+				printf "%-20s%s\n" "Type/Qualifier:" "${optprmtype[i]}${optprmqual[i]}"
+				printf "%-20s%s\n" "Min:" "${optprmmin[i]}"
+				printf "%-20s%s\n" "Min (Hex):" "${optprmminhex[i]}"
+				printf "%-20s%s\n" "Min (Oct):" "${optprmminoct[i]}"
+				printf "%-20s%s\n" "Max:" "${optprmmax[i]}"
+				printf "%-20s%s\n" "Max (Hex):" "${optprmmaxhex[i]}"
+				printf "%-20s%s\n" "Max (Oct):" "${optprmmaxoct[i]}"
+				printf "%-20s%s\n" "Pex:" "${optprmpex[i]}"
+				printf "%-20s%s\n" "Rex:" "${optprmpex[i]}"
+				printf "%-20s%s\n" "Default:" "${optprmdef[i]}"
+				printf "%-20s%s\n" "Default (Hex):" "${optprmdefhex[i]}"
+				printf "%-20s%s\n" "Default (Oct):" "${optprmdefoct[i]}"
+			fi
+
+			printf "\n"
+		done
+	fi
+}
+
+###############################################################################
+
+showvars()
+{
+	# Lists variables generated from the registered usage information and
+	# the parsed command-line. Useful for debugging and checking if
+	# there is overlap between argument-related and client script variables
+
+	local i pfx lst var
+
+	printf "\n"
+
+	printf "%s\n" "GLOBAL VARIABLES"
+	printf "%s\n" "----------------"
+
+	lst=${!s*}
+	
+	for var in $lst; do
+		printvar "$var"
+	done
+
+	printf "\n"
+
+	if (( $rqdcount > 0 )); then
+
+		printf "%s\n" "REQUIRED ARGUMENT VARIABLES"
+		printf "%s\n" "---------------------------"
+
+		for (( i=0; i<rqdcount; i++ )); do
+
+			pfx=${rqdprm[i]}
+			eval "lst="'$'"{!$pfx""*}"
+
+			for var in $lst; do
+				printvar "$var"
+			done
+
+			printf "\n"
+		done
+	fi
+
+	if (( $optcount > 0 )); then
+
+		printf "%s\n" "OPTIONAL ARGUMENT VARIABLES"
+		printf "%s\n" "---------------------------"
+
+		for (( i=0; i<optcount; i++ )); do
+	
+			pfx=${opt[i]}
+			eval "lst="'$'"{!$pfx""*}"
+
+			for var in $lst; do
+				printvar "$var"
+			done
+
+			printf "\n"
+		done
+	fi
+}
+
+###############################################################################
+
+showall()
+{
+	# Lists all current variables. Useful for debugging e.g. detecting
+	# straggling function variables that were not declared local
+	# Please tell me if there an easier way of doing this???
+
+	# Use unlikely variable names to detect and ignore local variables
+
+	local myshowall_alphas
+	local myshowall_i
+	local myshowall_c
+	local myshowall_lst
+	local myshowall_var
+
+	printf "\n"
+
+	myshowall_alphas="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+	printf "%s\n" "ALL KNOWN VARIABLES"
+	printf "%s\n" "-------------------"
+
+	for (( myshowall_i=0; myshowall_i<${#myshowall_alphas}; myshowall_i++ )); do
+
+		myshowall_c=${myshowall_alphas:myshowall_i:1}
+
+		eval "myshowall_lst="'${!'$myshowall_c"*}"
+	
+		for myshowall_var in $myshowall_lst; do
+
+			if ! [[ "$myshowall_var" =~ "myshowall_" ]]; then
+				printvar "$myshowall_var"
+			fi
+		done
+	done
+
+	printf "\n"
+}
+
+###############################################################################
+
+printvar()
+{
+	# Prints variable = value in our standard format and handles arrays.
+	# Values are surrounded by square brackets so there is no confusion
+	# regarding white space and array elements
+
+	local len i w item val 
+
+	eval len='$'{#$1[*]}
+
+	let w=$VAR_NAME_MAX+3
+
+	printf "%-$w""s = " '$'$1
+
+        if (( len == 0 )); then
+	        printf "[]\n" "$val"
+        else
+        	for ((i=0; i<len; i++ )); do
+
+	        	item='${'$1'[i]}'
+		        eval "val=$item"
+        		printf "[%s]\n" "$val"
+
+	        	if (( i < len-1 )); then
+		        	printf "%-$w""s   " ""
+        		fi
+	        done
+        fi
+}
+
+###############################################################################
+
+chkdup()
+{
+	# Returns CHK_OK if string argument has unique characters. Otherwise
+	# returns CHK_DUP with duplicate character placed in $CHKBAD
+
+	local len i j c
+
+	CHKVAL=""
+	CHKBAD=""
+	len=${#1}
+
+	for (( i=0; i<len; i++ )); do
+		c=${1:i:1}
+		for (( j=0; j<len; j++ )); do
+			if [[ "${1:j:1}" == "$c" ]]; then
+				if (( i != j )); then
+					CHKBAD="$c"
+					return $CHK_DUP
+				fi
+			fi
+		done
+	done
+
+	CHKVAL="$1"
+	return $CHK_OK
+}
+
+###############################################################################
+
+matchX()
+{
+	# Returns TRUE if string argument matches regular expression exactly
+	# Use with regexes containing no ^ or $ carets
+
+	# $1 = string to validate
+	# $2 = regular expression rule
+
+	local rex="^$2$"
+
+	if ! [[ "$1" =~ "$rex" ]]; then
+		return $FALSE
+	fi
+
+	return $TRUE
+}
+
+###############################################################################
+
+matchS()
+{
+	# Returns TRUE if string argument matches regular expression
+	# If regular expression does not contain ^ or $ carets then any sub
+	# string corresponding to the regex will result in a match
+
+	# $1 = string to validate
+	# $2 = regular expression rule
+
+	if ! [[ "$1" =~ "$2" ]]; then
+		return $FALSE
+	fi
+
+	return $TRUE
+}
+
+###############################################################################
+
+chkrex()
+{
+	# Validates string argument against regular expression
+
+	# $1 = string to validate
+	# $2 = regular expression rule
+
+	CHKVAL=""
+
+	if ! [[ "$1" =~ "$2" ]]; then
+		return $CHK_FMT
+	fi
+
+	CHKVAL="$1"
+	return $CHK_OK
+}
+
+###############################################################################
+
+chkpath()
+{
+	# Checks if pathname argument is correctly formatted
+	# Returns normalised version of path in $CHKVAL
+	# Returns normalised version of path parent in $CHKPAR unless path
+	# argument is "/" in which case
+
+	local len=${#1}
+	
+	CHKVAL=""
+
+	if (( len == 0 )); then
+		return $CHK_NUL
+	fi
+
+	if (( len < PATH_NAME_MIN )) || (( len > PATH_NAME_MAX )); then
+		return $CHK_SIZ
+	fi
+
+	if ! { matchX "$1" "$REX_PATH"; }; then
+		return $CHK_FMT
+	fi
+
+	CHKVAL="$1"
+	return $CHK_OK
+}
+
+###############################################################################
+
+chkpex()
+{
+	# Checks if an existing path satisfies path rule
+	
+	# $1 = path to validate
+	# $2 = path rule
+
+	# The path rule string consists of a series of standard file test flags.
+	# A minus before a flag indicates a negative test e.g. "f-x" means that
+	# the path must point to an existing non-executable regular file.
+
+	local c=""
+	local neg=$FALSE
+	local cond=""
+	local len=${#2}
+	local tst=$FALSE
+	local i=0
+
+	CHKVAL=""
+
+	while (( $i < $len )); do
+			
+		c=${2:i:1}
+			
+		if [[ $c == "-" ]]; then
+			neg=$TRUE
+		else					
+			if (( $neg )); then
+				cond="! [ "
+			else
+				cond="[ "
+			fi
+		
+			cond=$cond"-$c \"$1\" ]"
+
+			tst=$FALSE
+			eval "if $cond; then tst=0; fi"
+				
+			if ! (( $tst )); then
+				return $CHK_PEX
+			fi
+
+			neg=$FALSE				
+		fi
+
+		let i++
+	done
+
+	CHKVAL="$1"
+	return $CHK_OK
+}
+
+###############################################################################
+
+chknum()
+{
+	# Generic signed or unsigned integer validator. Min and Max range
+	# parameters may be supplied to overide normal type limits. A single
+	# range parameter is assumed to be a Max limit. Accepts hex, octal and
+	# decimal formats (with correct interpretation of negative numbers).
+	# If succcessful, normalised decimal, hex and octal representations are
+	# returned in $CHKVAL, $CHKHEX and $CHKOCT. If not successful, these
+	# values are unset and a non-zero return value indicates reason for
+	# validation failure.
+
+	# $1 = type/qualifier characters
+	# $2 = value to process
+	# $3 = min overide (or max if no more parameters)
+	# $4 = max overide (if min parameter supplied)
+
+	local t q xmin xmax xrng xhex xoct xdec len dec hex oct max min
+
+	t=${1:0:1}
+	q=${1:1:1}
+
+	eval 'xmin=$'$1"_MIN"		# type-specific min value
+	eval 'xmax=$'$1"_MAX"		# type-specific max value
+	eval 'xrng=$'$1"_RNG"		# type-specific range
+	eval 'xhex=$'$1"_HEX"		# type-specific hex width
+	eval 'xoct=$'$1"_OCT"		# type-specific octal width
+	eval 'xdec=$'$1"_DEC"		# type-specific decimal width
+
+	CHKVAL=""
+	CHKHEX=""
+	CHKOCT=""
+
+	let len=${#2}
+
+	if (( len == 0 )); then return $CHK_NUL; fi
+	
+	if [[ "${2:0:2}" =~ "0(x|X)" ]]; then
+
+		if ! { matchX "${2:2}" "$REX_HEX"; }; then return $CHK_FMT; fi
+		if (( len < 3 )) || (( len > xhex+2 )); then return $CHK_SIZ; fi
+
+		let dec=$2+0
+
+		if [[ $t == "I" ]]; then
+			if (( dec > xmax )); then let dec=dec-xrng; fi
+		fi
+
+	elif [[ "${2:0:1}" == "0" ]]; then
+
+		if ! { matchX "${2:1}" "$REX_OCT"; }; then return $CHK_FMT; fi
+		if (( len > xoct+1 )); then return $CHK_SIZ; fi
+
+		let dec=$2+0
+
+		if [[ $t == "I" ]]; then
+			if (( $dec > $xrng )); then return $CHK_RNG; fi
+			if (( $dec > $xmax )); then let dec=dec-xrng; fi
+		fi
+
+	else
+		if ! { matchX "$2" "$REX_DEC"; }; then return $CHK_FMT; fi
+
+		if [[ "${2:0:1}" =~ "[+-]" ]]; then
+			if (( len < 2 )) || (( len > xdec+1 )); then return $CHK_SIZ; fi
+		else
+			if (( len < 1 )) || (( len > xdec )); then return $CHK_SIZ; fi
+		fi
+
+		let dec=$2+0
+	fi
+
+	if [[ "$3" ]] && [[ "$4" ]]; then
+		min="$3"
+		max="$4"
+	else
+		min="$xmin"
+
+		if [[ "$3" ]]; then
+			max="$3"
+		elif [[ "$4" ]]; then
+			max="$4"
+		else
+			max=$xmax
+		fi
+	fi
+
+	if (( $dec > $max )); then return $CHK_RNG; fi
+	if (( $dec < $min )); then return $CHK_RNG; fi
+
+	if [[ $t == "N" ]]; then
+		hex=$(printf "%0"$hexw"x" "$dec");
+		oct=$(printf "%0"$octw"o" "$dec");
+	else
+		hex=$(printf "%0"$xhex"x" "$(((dec+xrng)%xrng))")
+		oct=$(printf "%0"$xoct"o" "$(((dec+xrng)%xrng))")
+	fi
+
+	CHKVAL="$dec"
+	CHKHEX="$hex"
+	CHKOCT="$oct"
+
+	return $CHK_OK
+}
+
+###############################################################################
+
+chkPE()
+{
+	# Validates and normalises an EXISTING path. A path expression rule may
+	# also be supplied to impose further constraints. If succcessful, the
+	# normalised (absolute) path is returned in $CHKVAL. If not successful,
+	# $CHKVAL is unset and the non-zero return value indicates the reason
+	# for validation failure.
+
+	local len abspath
+
+	CHKVAL=""
+		
+	let len=${#1}
+
+	if (( len == 0 )); then return $CHK_NUL; fi
+	if (( len > $PATH_NAME_MAX )); then return $CHK_SIZ; fi
+	if ! { chkpath "$1"; }; then return $CHK_FMT; fi
+
+	abspath=$CHKVAL
+
+	if ! [[ -e "$abspath" ]]; then return $CHK_PNF; fi
+
+	if [[ "$2" ]]; then
+		if ! { chkpex "$abspath" "$2"; }; then return $CHK_PEX; fi
+	fi
+
+	CHKVAL="$abspath"
+	return $CHK_OK
+}
+
+###############################################################################
+
+chkPN()
+{
+	# Validates and normalises a NEW path, which must NOT already exist.
+	# The parent directory must already exist and the shell must have write
+	# access to it (in order to create the new path object). A path
+	# expression rule may also be supplied to impose further constraints
+	# on the PARENT directory. If succcessful, the normalised (absolute)
+	# path is returned in $CHKVAL and the parent directory of the new path
+	# object is returned in $CHKPAR. If not successful, $CHKVAL is unset
+	# and the non-zero return value indicates the reason for validation
+	# failure. Note that the responsibility for actually creating the new
+	# path object rests entirely with the user script.
+
+	local len abspath parpath
+
+	CHKVAL=""
+	CHKPAR=""
+		
+	let len=${#1}
+
+	if (( len == 0 )); then return $CHK_NUL; fi
+	if (( len > $PATH_NAME_MAX )); then return $CHK_SIZ; fi
+	if ! { chkpath "$1"; }; then return $CHK_FMT; fi
+
+	abspath=$CHKVAL
+	parpath=$CHKPAR
+
+	if ! [[ "$parpath" ]]; then return $CHK_PPN; fi
+	if [[ -e "$abspath" ]]; then return $CHK_PAE; fi
+
+	if [[ "$2" ]]; then
+		if ! { chkpex "$parpath" "$2"; }; then return $CHK_PEX; fi
+	fi
+
+	CHKVAL="$abspath"
+	CHKPAR="$parpath"
+
+	return $CHK_OK
+}
+
+###############################################################################
+# INITIALISATION
+###############################################################################
+
+# Normalise and lock debug mode. Note that this defaults to enabled if not
+# explicitly disabled. This is to ensure that all new scripts will detect
+# debug-specific registration errors by default
+
+if [[ "$SDEBUG" == "$FALSE"  ]]; then
+	readonly SDEBUG=$FALSE
+else
+	readonly SDEBUG=$TRUE
+fi
+
+###############################################################################
+
+# Initialse error counters and arrays
+
+declare -i errcount=0
+declare -a errcon errmsg
+
+###############################################################################
+
+# Initialise argument counters and arrays
+	
+declare -i optcount=0
+declare -a opt optflg optdsc optval
+declare -a optprm optprmval optprmraw optprmhex optprmoct optprmtype optprmqual
+declare -a optprmmin optprmminhex optprmminoct optprmmax optprmmaxhex optprmmaxoct
+declare -a optprmpex optprmrex optprmdef optprmdefhex optprmdefoct
+
+declare -i rqdcount=0
+declare -a rqddsc
+declare -a rqdprm rqdprmval rqdprmraw rqdprmhex rqdprmoct rqdprmtype rqdprmqual
+declare -a rqdprmmin rqdprmminhex rqdprmminoct rqdprmmax rqdprmmaxhex rqdprmmaxoct
+declare -a rqdprmpex rqdprmrex rqdprmdef rqdprmdefhex rqdprmdefoct
+
+###############################################################################
+
+# Initialise misc global variables
+
+regdone=$FALSE
+
+###############################################################################
+
+# Initialise global option flags
+
+soptR=$FLGCLR		# may only run as root
+soptU=$FLGCLR		# may only run as user (not root)
+soptY=$FLGCLR		# recap arguments and request confirmation to proceed
+
+###############################################################################
+
+# Initialise built-in command-line option flags
+
+sb_quiet=$FLGCLR
+sb_verbose=$FLGCLR
+
+###############################################################################
+
+# Save original working directory, absolute script path and script name
+# Note that we may need a better way of doing this as in certain permissions
+# scenarios it may be possible to run a script in a directory to which you
+# cannot "cd".
+
+readonly swdir=$PWD
+cd $(dirname $0)
+readonly sxdir=$PWD
+cd $swdir
+readonly sname=$(basename $0)
+
+###############################################################################
+
+# Save original parameters so that they can be accessed within functions
+
+readonly spnum=$#
+readonly sprms=( "$@" )
+
+###############################################################################
+
+# Register common error codes and messages
+
+regerr ERR_CHK 			"assertion fail"
+regerr ERR_DBG_ONLY 		"this feature is only available in debug mode"
+regerr ERR_ERREXIT_INT 		"internal command error"
+regerr ERR_ERREXIT_NULL 	"error generated but no error number provided (bug)"
+regerr ERR_ERREXIT_NON		"error generated using invalid error number (bug)"
+regerr ERR_ERREXIT_RNG		"error generated using illegal error number (bug)"
+regerr ERR_ERREXIT_ARG		"error generated with incorrect argument(s) (bug)"
+regerr ERR_REGERR_DONE		"regerr may not be performed after reguse (bug)"
+regerr ERR_REGERR_ARG		"regerr has excess arguments (bug)"
+regerr ERR_REGERR_CON		"regerr constant name is invalid (bug)"
+regerr ERR_REGERR_VAR		"regerr constant name clashes with existing variable (bug)"
+regerr ERR_REGERR_DSC		"error registration description is too small or too big (bug)"
+regerr ERR_REGUSE_DONE		"reguse may only be performed once"
+regerr ERR_REGUSE_SPEC		"reguse spec is invalid or incomplete (bug)"
+regerr ERR_REGUSE_NAME		"reguse has invalid script name (bug)"
+regerr ERR_REGUSE_NAME_CFL	"reguse command name is different from script name (bug)"
+regerr ERR_REGUSE_GLB		"reguse has invalid global option (bug)"
+regerr ERR_REGUSE_GLB_UNK	"reguse has unknown global option (bug)"
+regerr ERR_REGUSE_GLB_DUP	"reguse has duplicate global option (bug)"
+regerr ERR_REGUSE_ARG		"reguse has invalid argument spec (bug)"
+regerr ERR_REGUSE_ARG_ORD	"reguse optional argument registered after required argument (bug)"
+regerr ERR_REGUSE_ARG_DESC	"reguse argument has no description (bug)"
+regerr ERR_REGUSE_OPT		"reguse has invalid optional argument spec (bug)"
+regerr ERR_REGUSE_OPT_NAME	"reguse has invalid optional argument name (bug)"
+regerr ERR_REGUSE_OPT_VAR 	"reguse flag conflicts with existing variable (bug)"
+regerr ERR_REGUSE_OPT_LEN 	"reguse parameter name has too few or too many characters (bug)"
+regerr ERR_REGUSE_OPT_DUP	"reguse has duplicate option (bug)"
+regerr ERR_REGUSE_PRM		"reguse has invalid parameter spec (bug)"
+regerr ERR_REGUSE_PRM_NAME	"reguse has invalid parameter name (bug)"
+regerr ERR_REGUSE_PRM_VAR	"reguse parameter name conflicts with existing variable (bug)"
+regerr ERR_REGUSE_PRM_LEN 	"reguse parameter name has too few or too many characters (bug)"
+regerr ERR_REGUSE_PRM_DUP	"reguse has duplicate parameter (bug)"
+regerr ERR_REGUSE_PRM_TYPE	"reguse has invalid parameter type (bug)"
+regerr ERR_REGUSE_PRM_QUAL	"reguse has invalid parameter qualifier (bug)"
+regerr ERR_REGUSE_PRM_RULE	"reguse has invalid parameter rule (bug)"
+regerr ERR_REGUSE_PRM_NUL	"reguse parameter control may not have a null value (bug)"
+regerr ERR_REGUSE_PRM_FMT	"reguse parameter control is badly formatted (bug)"
+regerr ERR_REGUSE_PRM_SIZ	"reguse parameter control has too few or too many characters (bug)"
+regerr ERR_REGUSE_PRM_RNG	"reguse parameter control is out of range (bug)"
+regerr ERR_REGUSE_PRM_CFL	"reguse parameter control conflict (bug)"
+regerr ERR_REGUSE_PRM_PEX	"reguse has invalid parameter path rule (bug)"
+regerr ERR_REGUSE_PRM_REX	"reguse has invalid regular expression rule (bug)"
+regerr ERR_REGUSE_PRM_DEF 	"reguse required parameter may not have a default value (bug)"
+regerr ERR_ARG			"invalid argument(s)"
+regerr ERR_ARG_ORD		"optional argument supplied after required argument"
+regerr ERR_ARG_MISSING		"missing argument(s)"
+regerr ERR_ARG_EXCESS		"too many arguments"
+regerr ERR_ARG_OPT		"invalid option"
+regerr ERR_ARG_OPT_UKL		"unknown long option"
+regerr ERR_ARG_OPT_UKS		"unknown short option"
+regerr ERR_ARG_OPT_MULTI	"multiple arguments not allowed with standalone option"
+regerr ERR_ARG_OPT_NOPRM	"missing option parameter"
+regerr ERR_PRM_NUL		"supplied parameter may not have a null value"
+regerr ERR_PRM_FMT		"supplied parameter is badly formatted"
+regerr ERR_PRM_SIZ		"supplied parameter has too few or too many characters"
+regerr ERR_PRM_RNG		"supplied parameter is out of range"
+regerr ERR_PRM_PEX		"supplied path has incompatible type or permissions"
+regerr ERR_PRM_PNF		"supplied path not found"
+regerr ERR_PRM_PAE		"supplied path already exists"
+regerr ERR_PRM_PPN		"supplied path parent directory not found"
+regerr ERR_PRM_REX		"supplied parameter does not meet required format"
+regerr ERR_NOTROOT		"script must be run as root"
+regerr ERR_DNYROOT		"script may not be run as root"
+regerr ERR_USR_EXIT		"script cancelled by user"
+
+###############################################################################

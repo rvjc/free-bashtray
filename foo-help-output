@@ -1,0 +1,41 @@
+
+COMMAND
+	foo - set up a new data directory
+
+USAGE
+	foo [options] [ <badger> ]
+
+REQUIRED
+	badger                      badger number
+
+OPTIONS
+	--key                       use key
+
+	-n, --normal <value>        normal number
+
+	-m, --magic <value>         magic number
+
+	--quiet                     suppress all output except errors
+
+	--verbose                   show detailed output
+
+	--version                   show version information (standalone option)
+
+	--help                      show help information (standalone option)
+
+	--exitcodes                 show exit codes (standalone option)
+
+AUTHOR
+	Written by RVJ Callanan.
+
+BUGS
+	Report bugs to <bugs@rvjc.com>.
+
+COPYRIGHT
+	Copyright 2007 RVJC.COM.
+	This is free software. You may redistribute copies under
+	the terms of the GNU General Public License Version 3.
+	There is no warranty to the extent permitted by law.
+
+foo		1.0.0		02-Oct-2007
+
