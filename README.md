@@ -1,4 +1,4 @@
-# bashtray
+# Free Bashtray
 
 Bashtray is a bash script automation framework.
 It helps to get quality, feature-rich bash scripts up-and-running quickly.
